@@ -1,8 +1,7 @@
 import logging
 import aiofiles
 import asyncio
-from elevenlabs.client import ElevenLabs
-from elevenlabs import VoiceSettings
+from elevenlabs import ElevenLabs
 from config import Config
 from typing import Optional
 import os
@@ -13,6 +12,7 @@ class ElevenLabsService:
     def __init__(self):
         self.client = ElevenLabs(api_key=Config.ELEVENLABS_API_KEY)
         self.voice_id = Config.VOICE_ID
+        self.api_key_valid = False
         logger.info(f"ElevenLabs service initialized with voice ID: {self.voice_id}")
         
     async def text_to_speech(self, text: str) -> Optional[bytes]:
@@ -20,38 +20,35 @@ class ElevenLabsService:
         try:
             logger.info(f"Generating speech for text: {text[:100]}...")
             
-            # Run the sync generate method in a thread pool
+            # Run the sync generate method in a thread pool using new 2.x API
             def generate_sync():
-                return self.client.generate(
+                return self.client.text_to_speech.convert(
+                    voice_id=self.voice_id,
                     text=text,
-                    voice=self.voice_id,
-                    voice_settings=VoiceSettings(
-                        stability=0.71,
-                        similarity_boost=0.5,
-                        style=0.0,
-                        use_speaker_boost=True
-                    ),
-                    model="eleven_multilingual_v2"  # Supports Italian
+                    model_id="eleven_multilingual_v2",
+                    output_format="mp3_44100_128"
                 )
             
-            # Convert generator to bytes
-            audio_generator = await asyncio.get_event_loop().run_in_executor(
+            # Get audio bytes
+            audio_bytes = await asyncio.get_event_loop().run_in_executor(
                 None, generate_sync
             )
             
-            # Collect all audio chunks
-            audio_data = b""
-            for chunk in audio_generator:
-                if chunk:
-                    audio_data += chunk
-            
-            logger.info(f"Generated audio data size: {len(audio_data)} bytes")
-            return audio_data
+            logger.info(f"Generated audio data size: {len(audio_bytes)} bytes")
+            return audio_bytes
             
         except Exception as e:
-            logger.error(f"Error generating speech: {e}")
-            logger.error(f"Voice ID used: {self.voice_id}")
-            logger.error(f"Text length: {len(text)} characters")
+            error_msg = str(e).lower()
+            if "invalid api key" in error_msg or "unauthorized" in error_msg:
+                logger.error("❌ ELEVENLABS API KEY IS INVALID OR EXPIRED!")
+                logger.error("Please check your ElevenLabs API key in the environment variables")
+            elif "voice" in error_msg:
+                logger.error(f"❌ VOICE ID {self.voice_id} NOT FOUND!")
+                logger.error("Please check your Voice ID in the environment variables")
+            else:
+                logger.error(f"Error generating speech: {e}")
+                logger.error(f"Voice ID used: {self.voice_id}")
+                logger.error(f"Text length: {len(text)} characters")
             return None
     
     async def save_audio_file(self, audio_data: bytes, filename: str) -> str:
@@ -85,7 +82,7 @@ class ElevenLabsService:
             # Generate audio
             audio_data = await self.text_to_speech(text)
             if not audio_data:
-                logger.error("No audio data generated")
+                logger.error("No audio data generated - likely API key or voice ID issue")
                 return None
             
             # Save to file
@@ -114,19 +111,27 @@ class ElevenLabsService:
             # Try to get available voices to test connection
             voices = self.client.voices.get_all()
             logger.info(f"ElevenLabs connection test successful. Found {len(voices.voices)} voices")
+            self.api_key_valid = True
             
             # Check if our voice ID exists
             voice_found = any(v.voice_id == self.voice_id for v in voices.voices)
             if voice_found:
-                logger.info(f"Voice ID {self.voice_id} found in available voices")
+                logger.info(f"✅ Voice ID {self.voice_id} found in available voices")
             else:
-                logger.warning(f"Voice ID {self.voice_id} not found in available voices")
+                logger.warning(f"❌ Voice ID {self.voice_id} not found in available voices")
                 # List available voice IDs for debugging
                 available_voices = [f"{v.name}: {v.voice_id}" for v in voices.voices[:5]]
-                logger.info(f"Available voices: {available_voices}")
+                logger.warning(f"Available voices: {available_voices}")
             
             return voice_found
             
         except Exception as e:
-            logger.error(f"ElevenLabs connection test failed: {e}")
+            error_msg = str(e).lower()
+            if "invalid api key" in error_msg or "unauthorized" in error_msg:
+                logger.error("🚨 CRITICAL: ElevenLabs API key is INVALID or EXPIRED!")
+                logger.error("🔧 ACTION REQUIRED: Update ELEVENLABS_API_KEY environment variable")
+                self.api_key_valid = False
+            else:
+                logger.error(f"ElevenLabs connection test failed: {e}")
+            
             return False 

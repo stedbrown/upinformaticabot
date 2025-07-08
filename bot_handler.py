@@ -262,16 +262,20 @@ class TelegramBotHandler:
                 logger.info("Voice response sent successfully")
             else:
                 logger.warning("Voice generation failed, sending text fallback")
+                # Check if it's an API key issue
+                if not hasattr(self.voice_service, 'api_key_valid') or not self.voice_service.api_key_valid:
+                    fallback_message = f"🔊 {text}\n\n⚠️ Servizio vocale temporaneamente non disponibile (problema configurazione)"
+                else:
+                    fallback_message = f"🔊 {text}\n\n⚠️ Servizio vocale temporaneamente non disponibile"
+                
                 # Fallback to text message if voice generation fails
-                await update.message.reply_text(
-                    f"🔊 {text}\n\n(Risposta vocale non disponibile - errore nel servizio)"
-                )
+                await update.message.reply_text(fallback_message)
                 
         except Exception as e:
             logger.error(f"Error sending voice response: {e}")
             # Fallback to text
             try:
-                await update.message.reply_text(f"🔊 {text}\n\n(Errore nel servizio vocale)")
+                await update.message.reply_text(f"🔊 {text}\n\n⚠️ Errore nel servizio vocale")
             except Exception as fallback_error:
                 logger.error(f"Even text fallback failed: {fallback_error}")
     
