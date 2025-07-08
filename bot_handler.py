@@ -16,6 +16,16 @@ class TelegramBotHandler:
         self.voice_service = ElevenLabsService()
         self.calendar_service = CalendarService()
         self.user_sessions: Dict[int, UserSession] = {}
+        
+        # Test ElevenLabs connection
+        try:
+            voice_working = self.voice_service.test_connection()
+            if voice_working:
+                logger.info("ElevenLabs service is working correctly")
+            else:
+                logger.warning("ElevenLabs service connection test failed - voice responses may not work")
+        except Exception as e:
+            logger.error(f"Error testing ElevenLabs connection: {e}")
     
     def get_or_create_session(self, user_id: int, chat_id: int) -> UserSession:
         """Get existing user session or create new one"""
@@ -233,11 +243,13 @@ class TelegramBotHandler:
         """Send voice response to user"""
         try:
             user_id = update.effective_user.id
+            logger.info(f"Attempting to send voice response to user {user_id}")
             
             # Generate voice response
             voice_file_path = await self.voice_service.generate_voice_response(text, user_id)
             
             if voice_file_path:
+                logger.info(f"Voice file generated: {voice_file_path}")
                 # Send voice message
                 with open(voice_file_path, 'rb') as audio_file:
                     await update.message.reply_voice(
@@ -247,16 +259,21 @@ class TelegramBotHandler:
                 
                 # Clean up temporary file
                 self.voice_service.cleanup_audio_file(voice_file_path)
+                logger.info("Voice response sent successfully")
             else:
+                logger.warning("Voice generation failed, sending text fallback")
                 # Fallback to text message if voice generation fails
                 await update.message.reply_text(
-                    f"🔊 {text}\n\n(Risposta vocale non disponibile)"
+                    f"🔊 {text}\n\n(Risposta vocale non disponibile - errore nel servizio)"
                 )
                 
         except Exception as e:
             logger.error(f"Error sending voice response: {e}")
             # Fallback to text
-            await update.message.reply_text(f"🔊 {text}")
+            try:
+                await update.message.reply_text(f"🔊 {text}\n\n(Errore nel servizio vocale)")
+            except Exception as fallback_error:
+                logger.error(f"Even text fallback failed: {fallback_error}")
     
     async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
