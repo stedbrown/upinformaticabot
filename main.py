@@ -72,7 +72,7 @@ class TelegramVoiceBot:
             logger.info("Bot is running! Press Ctrl+C to stop.")
             
             # Keep the bot running
-            await self.application.updater.idle()
+            await self.application.idle()
             
         except KeyboardInterrupt:
             logger.info("Bot stopped by user")
