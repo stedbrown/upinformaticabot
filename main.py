@@ -1,5 +1,4 @@
 import logging
-import asyncio
 import os
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config import Config
@@ -53,7 +52,7 @@ class TelegramVoiceBot:
         
         logger.info("Handlers setup completed")
     
-    async def start(self):
+    def start(self):
         """Start the bot"""
         try:
             # Create temp directory for audio files
@@ -64,15 +63,8 @@ class TelegramVoiceBot:
             
             logger.info("Starting Telegram Voice Bot...")
             
-            # Start the bot
-            await self.application.initialize()
-            await self.application.start()
-            await self.application.updater.start_polling()
-            
-            logger.info("Bot is running! Press Ctrl+C to stop.")
-            
-            # Keep the bot running
-            await self.application.idle()
+            # Start the bot using run_polling (correct method for v20.x)
+            self.application.run_polling()
             
         except KeyboardInterrupt:
             logger.info("Bot stopped by user")
@@ -80,14 +72,11 @@ class TelegramVoiceBot:
             logger.error(f"Error starting bot: {e}")
             raise
         finally:
-            await self.stop()
+            self._cleanup()
     
-    async def stop(self):
-        """Stop the bot gracefully"""
-        logger.info("Stopping bot...")
-        await self.application.updater.stop()
-        await self.application.stop()
-        await self.application.shutdown()
+    def _cleanup(self):
+        """Clean up resources"""
+        logger.info("Cleaning up resources...")
         
         # Clean up temp files
         try:
@@ -98,16 +87,16 @@ class TelegramVoiceBot:
         except Exception as e:
             logger.error(f"Error cleaning up temp files: {e}")
 
-async def main():
+def main():
     """Main application entry point"""
-    bot = TelegramVoiceBot()
-    await bot.start()
-
-if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        bot = TelegramVoiceBot()
+        bot.start()
     except KeyboardInterrupt:
         logger.info("Application terminated by user")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
-        exit(1) 
+        exit(1)
+
+if __name__ == "__main__":
+    main() 
